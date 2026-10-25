@@ -1,0 +1,471 @@
+// inspector: the rows. Each row is a label on the left and a control on the
+// right, so a panel of them lines up in two columns. The bound rows
+// (NumberRow, TextRow, ToggleRow, ChoiceRow, ColorRow…) edit a value of
+// yours directly; the Inspector view (inspector.tsl) builds the same rows
+// from a list of properties. Both are drawn by the "editor" views here.
+//
+// Author: Alexius Academia
+// Date: 2026-10-25
+
+// How wide the labels are, unless a row or the Inspector says otherwise.
+let defaultLabelWidth = 120.0
+
+// No limit, for `min` and `max`.
+let unlimited = 1.0 / 0.0
+
+// Whether a row called `label` shows for the search text `filter`.
+fn shows(_ label: String, _ filter: String) -> Bool {
+    let f = filter.trim().lowercase()
+    f.isEmpty || label.lowercase().contains(f)
+}
+
+// x kept between lo and hi.
+fn clampTo(_ x: Float, _ lo: Float, _ hi: Float) -> Float {
+    if x < lo {
+        return lo
+    }
+    if x > hi {
+        return hi
+    }
+    x
+}
+
+// A color as text: "#3478f6" for one made with rgb, its name otherwise.
+fn colorText(_ c: Color) -> String {
+    match c {
+        .rgb(r, g, b) -> "#" + Data(bytes: [r, g, b]).hex
+        .rgba(r, g, b, a) -> "#" + Data(bytes: [r, g, b, Int(round(a * 255.0))]).hex
+        _ -> "{c}"
+    }
+}
+
+// The label of a row.
+view RowLabel(text: String, width: Float, help: String) {
+    Text(text)
+        .font(size: 13)
+        .color(.secondary)
+        .frame(width: width, alignment: .leading)
+        .tooltip(help)
+}
+
+// A row: the label, then the control filling the rest. With `drag`, the
+// label can be dragged sideways, and `onDrag` gets how far.
+view RowFrame(label: String, labelWidth: Float, help: String, drag: Bool = false, onDrag: fn(Float) = { d in },
+              content: View) {
+    HStack(spacing: 8) {
+        if drag {
+            RowLabel(text: label, width: labelWidth, help: if help.isEmpty { "Drag sideways to change" } else { help })
+                .cursor(.resizeHorizontal)
+                .onDrag { dx, dy in onDrag(dx) }
+        } else {
+            RowLabel(text: label, width: labelWidth, help: help)
+        }
+        content
+    }
+    .padding(horizontal: 10, vertical: 3)
+    .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
+}
+
+// The editing part of a number row: a field for what's typed, applied with
+// Enter. It's made again (with `.id`) whenever the value changes, so it
+// always starts from the value.
+view NumberField(current: Float, unit: String, decimals: Int, lo: Float, hi: Float, mixed: Bool,
+                 onValue: fn(Float)) {
+    state draft = if mixed { "" } else { formatNumber(current, decimals: decimals) }
+    state problem = ""
+    state problemFor = ""
+
+    VStack(spacing: 2, alignment: .leading) {
+        HStack(spacing: 6) {
+            TextField(if mixed { "Mixed" } else { "" }, text: draft)
+                .font(size: 13)
+                .onSubmit {
+                    match evaluate(draft, unit: unit) {
+                        .ok(x) -> {
+                            let y = clampTo(x, lo, hi)
+                            draft = formatNumber(y, decimals: decimals)
+                            problem = ""
+                            onValue(y)
+                        }
+                        .failure(e) -> {
+                            problem = e.message
+                            problemFor = draft
+                        }
+                    }
+                }
+            if problem.isEmpty && draft != (if mixed { "" } else { formatNumber(current, decimals: decimals) }) {
+                Icon(.undo)
+                    .font(size: 11)
+                    .color(.orange)
+                    .tooltip("Press Enter to apply, or click to go back to {formatNumber(current, decimals: decimals)}")
+                    .onTap { draft = if mixed { "" } else { formatNumber(current, decimals: decimals) } }
+            }
+            if !unit.isEmpty {
+                Text(unit).font(size: 13).color(.secondary)
+            }
+        }
+        if !problem.isEmpty && draft == problemFor {
+            Text(problem).font(size: 11).color(.red)
+        }
+    }
+}
+
+// A number row. Dragging the label sideways changes the value (by `step`,
+// or by about a hundredth of it); with a `step`, − and + buttons do too.
+view NumberEditor(label: String, current: Float, unit: String, decimals: Int, lo: Float, hi: Float, step: Float,
+                  mixed: Bool, readOnly: Bool, labelWidth: Float, help: String, onValue: fn(Float)) {
+    state carry = 0.0
+
+    RowFrame(label: label, labelWidth: labelWidth, help: help, drag: !readOnly, onDrag: { dx in
+        // Each point dragged is a step; the part of a step left over is kept.
+        let unitStep = if step > 0.0 { step } else { dragStep(current, decimals) }
+        carry += dx
+        let whole = if carry >= 0.0 { floor(carry) } else { ceil(carry) }
+        carry -= whole
+        if whole != 0.0 {
+            let base = if mixed { 0.0 } else { current }
+            onValue(clampTo(base + whole * unitStep, lo, hi))
+        }
+    }) {
+        if readOnly {
+            Text(if mixed { "Mixed" } else { formatNumber(current, decimals: decimals) + (if unit.isEmpty { "" } else { " " + unit }) })
+                .font(size: 13)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            NumberField(current: current, unit: unit, decimals: decimals, lo: lo, hi: hi, mixed: mixed, onValue: onValue)
+                .id("{current}|{mixed}")
+            if step > 0.0 {
+                HStack(spacing: 2) {
+                    Icon(.minus)
+                        .font(size: 11)
+                        .padding(4)
+                        .hoverBackground(.lightGray, radius: 4)
+                        .tooltip("{formatNumber(step, decimals: 6)} less")
+                        .onTap { onValue(clampTo(current - step, lo, hi)) }
+                    Icon(.plus)
+                        .font(size: 11)
+                        .padding(4)
+                        .hoverBackground(.lightGray, radius: 4)
+                        .tooltip("{formatNumber(step, decimals: 6)} more")
+                        .onTap { onValue(clampTo(current + step, lo, hi)) }
+                }
+            }
+        }
+    }
+}
+
+// How much one point of dragging changes a value with no step: about a
+// hundredth of it, a round number, and no finer than the decimals shown.
+fn dragStep(_ x: Float, _ decimals: Int) -> Float {
+    let finest = pow(10.0, Float(-max(0, decimals)))
+    if x == 0.0 || !x.isFinite {
+        return max(finest, 0.1)
+    }
+    max(finest, pow(10.0, floor(log10(abs(x))) - 2.0))
+}
+
+// A text row's field, applied with Enter.
+view TextFieldPart(current: String, mixed: Bool, onText: fn(String)) {
+    state draft = if mixed { "" } else { current }
+
+    HStack(spacing: 6) {
+        TextField(if mixed { "Mixed" } else { "" }, text: draft)
+            .font(size: 13)
+            .onSubmit { onText(draft) }
+        if draft != (if mixed { "" } else { current }) {
+            Icon(.undo)
+                .font(size: 11)
+                .color(.orange)
+                .tooltip("Press Enter to apply, or click to go back")
+                .onTap { draft = if mixed { "" } else { current } }
+        }
+    }
+}
+
+view TextEditor(label: String, current: String, mixed: Bool, readOnly: Bool, labelWidth: Float, help: String,
+                onText: fn(String)) {
+    RowFrame(label: label, labelWidth: labelWidth, help: help) {
+        if readOnly {
+            Text(if mixed { "Mixed" } else { current })
+                .font(size: 13)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            TextFieldPart(current: current, mixed: mixed, onText: onText)
+                .id("{current}|{mixed}")
+        }
+    }
+}
+
+// An on/off switch. Mixed shows the knob in the middle.
+view Switch(on: Bool, mixed: Bool, enabled: Bool, action: fn()) {
+    ZStack(alignment: if mixed { .center } else if on { .trailing } else { .leading }) {
+        Text("")
+            .frame(width: 34, height: 20)
+            .background(if on && !mixed { .green } else { .lightGray }, radius: 10)
+        Text("")
+            .frame(width: 16, height: 16)
+            .background(.white, radius: 8)
+            .padding(2)
+    }
+    .opacity(if enabled { 1.0 } else { 0.5 })
+    .onTap {
+        if enabled {
+            action()
+        }
+    }
+    .accessibilityLabel(if mixed { "Mixed" } else if on { "On" } else { "Off" })
+}
+
+view ToggleEditor(label: String, on: Bool, mixed: Bool, readOnly: Bool, labelWidth: Float, help: String,
+                  onToggle: fn(Bool)) {
+    RowFrame(label: label, labelWidth: labelWidth, help: help) {
+        Switch(on: on, mixed: mixed, enabled: !readOnly) {
+            onToggle(if mixed { true } else { !on })
+        }
+        if mixed {
+            Text("Mixed").font(size: 13).color(.secondary)
+        }
+        Spacer()
+    }
+}
+
+// A choice row: the current option, and a list of them under it on a click.
+view ChoiceEditor(label: String, current: String, options: [String], mixed: Bool, readOnly: Bool,
+                  labelWidth: Float, help: String, onChoice: fn(String)) {
+    state open = false
+
+    RowFrame(label: label, labelWidth: labelWidth, help: help) {
+        HStack(spacing: 6) {
+            Text(if mixed { "Mixed" } else { current })
+                .font(size: 13)
+                .color(if mixed { .secondary } else { .primary })
+            Spacer()
+            if !readOnly {
+                Icon(.chevronDown).font(size: 10).color(.secondary)
+            }
+        }
+        .padding(horizontal: 8, vertical: 4)
+        .frame(maxWidth: .infinity)
+        .border(.separator, width: 1, radius: 6)
+        .hoverBackground(.lightGray, radius: 6)
+        .onTap {
+            if !readOnly {
+                open = true
+            }
+        }
+        .accessibilityLabel(label)
+        .popover(isPresented: open) {
+            ChoiceList(current: if mixed { "" } else { current }, options: options) { o in
+                open = false
+                onChoice(o)
+            }
+        }
+    }
+}
+
+view ChoiceList(current: String, options: [String], onPick: fn(String)) {
+    Scroll {
+        VStack(spacing: 0, alignment: .leading) {
+            for o in options {
+                HStack(spacing: 6) {
+                    Icon(.check).font(size: 11).opacity(if o == current { 1.0 } else { 0.0 })
+                    Text(o).font(size: 13)
+                    Spacer()
+                }
+                .padding(horizontal: 8, vertical: 5)
+                .frame(maxWidth: .infinity)
+                .hoverBackground(.highlight, radius: 4)
+                .onTap { onPick(o) }
+            }
+        }
+    }
+    .frame(width: 200, height: min(Float(options.count) * 26.0 + 4.0, 260.0))
+}
+
+// A color row's swatch: its own copy of the color, given back on a change.
+view ColorPart(current: Color, mixed: Bool, onColor: fn(Color)) {
+    state c = current
+
+    HStack(spacing: 8) {
+        ColorPicker(color: c) { onColor(c) }
+        Text(if mixed { "Mixed" } else { colorText(current) }).font(size: 13).color(.secondary)
+        Spacer()
+    }
+}
+
+view ColorEditor(label: String, current: Color, mixed: Bool, readOnly: Bool, labelWidth: Float, help: String,
+                 onColor: fn(Color)) {
+    RowFrame(label: label, labelWidth: labelWidth, help: help) {
+        if readOnly {
+            HStack(spacing: 8) {
+                Text("").frame(width: 44, height: 24).background(current, radius: 4).border(.separator, width: 1, radius: 4)
+                Text(colorText(current)).font(size: 13).color(.secondary)
+                Spacer()
+            }
+        } else {
+            ColorPart(current: current, mixed: mixed, onColor: onColor)
+                .id("{colorText(current)}|{mixed}")
+        }
+    }
+}
+
+view InfoEditor(label: String, value: String, labelWidth: Float, help: String) {
+    RowFrame(label: label, labelWidth: labelWidth, help: help) {
+        Text(value)
+            .font(size: 13)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+view ButtonEditor(label: String, title: String, labelWidth: Float, help: String, action: fn()) {
+    RowFrame(label: label, labelWidth: labelWidth, help: help) {
+        Button(title) { action() }.font(size: 13)
+        Spacer()
+    }
+}
+
+// Section(title, expanded:, content)
+//   A heading that opens and closes the rows under it.
+public view Section(_ title: String, expanded: Bool = true, content: View) {
+    state open = expanded
+
+    VStack(spacing: 0, alignment: .leading) {
+        SectionHeading(title: title, open: open) { open = !open }
+        if open {
+            VStack(spacing: 0, alignment: .leading) {
+                content
+            }
+        }
+    }
+}
+
+view SectionHeading(title: String, open: Bool, action: fn()) {
+    HStack(spacing: 6) {
+        Icon(if open { .chevronDown } else { .chevronRight }).font(size: 10).color(.secondary)
+        Text(title).font(size: 13, weight: .semibold)
+        Spacer()
+    }
+    .padding(horizontal: 10, vertical: 6)
+    .frame(maxWidth: .infinity)
+    .background(.sidebar)
+    .onTap { action() }
+}
+
+// SearchBox(text:)
+//   A field for what to look for, with a button that clears it. Give its
+//   text to the rows' `filter:` to show only the rows whose label has it.
+public view SearchBox(text: bind String) {
+    HStack(spacing: 6) {
+        Icon(.search).font(size: 13).color(.secondary)
+        TextField("Search properties", text: text).font(size: 13)
+        if !text.isEmpty {
+            Icon(.close)
+                .font(size: 13)
+                .color(.secondary)
+                .tooltip("Clear the search")
+                .onTap { text = "" }
+        }
+    }
+    .padding(horizontal: 10, vertical: 6)
+}
+
+// NumberRow(label, value:, unit:, decimals:, min:, max:, step:, readOnly:, labelWidth:, help:, filter:, onChange:)
+//   A number, typed and applied with Enter. What's typed can be a sum
+//   ("2*3.5") or have units ("3 ft" in a field in mm), see `evaluate`. The
+//   value is kept between `min` and `max`. Dragging the label changes it;
+//   with a `step`, − and + buttons do too. `onChange` runs after a change.
+public view NumberRow(_ label: String, value: bind Float, unit: String = "", decimals: Int = 4,
+                      min: Float = -unlimited, max: Float = unlimited, step: Float = 0.0, readOnly: Bool = false,
+                      labelWidth: Float = defaultLabelWidth, help: String = "", filter: String = "",
+                      onChange: fn() = {}) {
+    if shows(label, filter) {
+        NumberEditor(label: label, current: value, unit: unit, decimals: decimals, lo: min, hi: max, step: step,
+                     mixed: false, readOnly: readOnly, labelWidth: labelWidth, help: help) { x in
+            value = x
+            onChange()
+        }
+    }
+}
+
+// IntegerRow(label, value:, unit:, min:, max:, step:, …)
+//   A whole number, as NumberRow edits a Float (what's typed is rounded).
+public view IntegerRow(_ label: String, value: bind Int, unit: String = "", min: Float = -unlimited,
+                       max: Float = unlimited, step: Float = 1.0, readOnly: Bool = false,
+                       labelWidth: Float = defaultLabelWidth, help: String = "", filter: String = "",
+                       onChange: fn() = {}) {
+    if shows(label, filter) {
+        NumberEditor(label: label, current: Float(value), unit: unit, decimals: 0, lo: min, hi: max, step: step,
+                     mixed: false, readOnly: readOnly, labelWidth: labelWidth, help: help) { x in
+            value = Int(round(x))
+            onChange()
+        }
+    }
+}
+
+// TextRow(label, text:, readOnly:, …)
+//   A line of text, applied with Enter.
+public view TextRow(_ label: String, text: bind String, readOnly: Bool = false, labelWidth: Float = defaultLabelWidth,
+                    help: String = "", filter: String = "", onChange: fn() = {}) {
+    if shows(label, filter) {
+        TextEditor(label: label, current: text, mixed: false, readOnly: readOnly, labelWidth: labelWidth, help: help) { s in
+            text = s
+            onChange()
+        }
+    }
+}
+
+// ToggleRow(label, isOn:, …)
+//   An on/off switch.
+public view ToggleRow(_ label: String, isOn: bind Bool, readOnly: Bool = false, labelWidth: Float = defaultLabelWidth,
+                      help: String = "", filter: String = "", onChange: fn() = {}) {
+    if shows(label, filter) {
+        ToggleEditor(label: label, on: isOn, mixed: false, readOnly: readOnly, labelWidth: labelWidth, help: help) { on in
+            isOn = on
+            onChange()
+        }
+    }
+}
+
+// ChoiceRow(label, selection:, options:, …)
+//   One of a list of options, picked from a list that opens on a click.
+public view ChoiceRow(_ label: String, selection: bind String, options: [String], readOnly: Bool = false,
+                      labelWidth: Float = defaultLabelWidth, help: String = "", filter: String = "",
+                      onChange: fn() = {}) {
+    if shows(label, filter) {
+        ChoiceEditor(label: label, current: selection, options: options, mixed: false, readOnly: readOnly,
+                     labelWidth: labelWidth, help: help) { o in
+            selection = o
+            onChange()
+        }
+    }
+}
+
+// ColorRow(label, color:, …)
+//   A color, picked from the palette that opens on a click.
+public view ColorRow(_ label: String, color: bind Color, readOnly: Bool = false, labelWidth: Float = defaultLabelWidth,
+                     help: String = "", filter: String = "", onChange: fn() = {}) {
+    if shows(label, filter) {
+        ColorEditor(label: label, current: color, mixed: false, readOnly: readOnly, labelWidth: labelWidth, help: help) { c in
+            color = c
+            onChange()
+        }
+    }
+}
+
+// InfoRow(label, value, …)
+//   A value to read, not change: a result, a count, a name.
+public view InfoRow(_ label: String, _ value: String, labelWidth: Float = defaultLabelWidth, help: String = "",
+                    filter: String = "") {
+    if shows(label, filter) {
+        InfoEditor(label: label, value: value, labelWidth: labelWidth, help: help)
+    }
+}
+
+// ButtonRow(label, title, …, action)
+//   A button, for what a value can't say: "Edit…", "Reset".
+public view ButtonRow(_ label: String, _ title: String, labelWidth: Float = defaultLabelWidth, help: String = "",
+                      filter: String = "", action: fn()) {
+    if shows(label, filter) {
+        ButtonEditor(label: label, title: title, labelWidth: labelWidth, help: help, action: action)
+    }
+}

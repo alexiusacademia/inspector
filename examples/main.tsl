@@ -1,0 +1,168 @@
+// inspector's example: both kinds of panel side by side. On the left, rows
+// bound to a beam's fields; on the right, an Inspector for the shapes
+// selected in a list, with "Mixed" where they differ.
+// `tessel run examples` opens it.
+//
+// Author: Alexius Academia
+// Date: 2026-10-25
+
+import ".."
+
+struct Beam {
+    name: String = "B-12"
+    span: Float = 6000.0
+    depth: Float = 450.0
+    width: Float = 250.0
+    bars: Int = 4
+    grade: String = "Grade 60"
+    braced: Bool = true
+    tint: Color = .rgb(52, 120, 246)
+}
+
+struct Shape {
+    name: String
+    kind: String
+    x: Float
+    y: Float
+    radius: Float
+    fill: Color
+    visible: Bool = true
+    layer: String = "Default"
+}
+
+// The rows for the selected shapes, "Mixed" where they differ.
+fn shapeProperties(_ shapes: [Shape], _ selected: [Int]) -> [inspector.Property] {
+    var picked: [Shape] = []
+    for k in selected {
+        picked.append(shapes[k])
+    }
+    if picked.isEmpty {
+        return []
+    }
+    let first = picked[0]
+    let sameX = picked.all(where: { s in s.x == first.x })
+    let sameY = picked.all(where: { s in s.y == first.y })
+    let sameR = picked.all(where: { s in s.radius == first.radius })
+    let sameFill = picked.all(where: { s in s.fill == first.fill })
+    let sameVisible = picked.all(where: { s in s.visible == first.visible })
+    let sameLayer = picked.all(where: { s in s.layer == first.layer })
+    var props = [
+        inspector.info("count", "Selected", "{picked.count} of {shapes.count}", group: "General"),
+        inspector.choice("layer", "Layer", first.layer, ["Default", "Walls", "Doors", "Furniture"], group: "General",
+                         mixed: !sameLayer),
+        inspector.toggle("visible", "Visible", first.visible, group: "General", mixed: !sameVisible),
+        inspector.color("fill", "Fill", first.fill, group: "General", mixed: !sameFill),
+        inspector.number("x", "Center X", first.x, unit: "m", decimals: 3, group: "Geometry", mixed: !sameX),
+        inspector.number("y", "Center Y", first.y, unit: "m", decimals: 3, group: "Geometry", mixed: !sameY),
+        inspector.number("r", "Radius", first.radius, unit: "m", decimals: 3, min: 0.0, group: "Geometry",
+                         mixed: !sameR, help: "Type a sum or a unit: 2*0.25, 18 in"),
+    ]
+    if picked.count == 1 {
+        props.append(inspector.info("area", "Area", "{inspector.formatNumber(pi * first.radius * first.radius, decimals: 3)} m²",
+                                    group: "Geometry"))
+        props.append(inspector.text("name", "Name", first.name, group: "General"))
+    }
+    props.append(inspector.action("delete", "Selection", "Delete", group: "General"))
+    props
+}
+
+// Applies one change to every selected shape.
+fn apply(_ shapes: bind [Shape], _ selected: [Int], _ key: String, _ value: inspector.Value) {
+    for k in selected {
+        match value {
+            .number(x) -> {
+                if key == "x" { shapes[k].x = x }
+                if key == "y" { shapes[k].y = x }
+                if key == "r" { shapes[k].radius = x }
+            }
+            .text(s) -> {
+                if key == "layer" { shapes[k].layer = s }
+                if key == "name" { shapes[k].name = s }
+            }
+            .toggle(on) -> { shapes[k].visible = on }
+            .color(c) -> { shapes[k].fill = c }
+            .pressed -> {}
+        }
+    }
+}
+
+app Inspectors(title: "Inspector", width: 820, height: 560) {
+    state beam = Beam()
+    state query = ""
+    state log = "Change a value"
+    state shapes = [
+        Shape(name: "Table", kind: "circle", x: 2.0, y: 1.5, radius: 0.6, fill: .rgb(52, 120, 246)),
+        Shape(name: "Lamp", kind: "circle", x: 4.0, y: 1.5, radius: 0.2, fill: .rgb(255, 149, 0), layer: "Furniture"),
+        Shape(name: "Column", kind: "circle", x: 6.0, y: 1.5, radius: 0.6, fill: .rgb(52, 120, 246), layer: "Walls"),
+    ]
+    state selected = [0, 2]
+
+    VStack(spacing: 0) {
+    HStack(spacing: 0, alignment: .top) {
+        VStack(spacing: 0, alignment: .leading) {
+            Text("Bound rows").font(size: 13, weight: .semibold).padding(horizontal: 10, vertical: 8)
+            inspector.SearchBox(text: query)
+            Divider()
+            Scroll {
+                VStack(spacing: 0, alignment: .leading) {
+                    inspector.Section("Beam") {
+                        inspector.TextRow("Name", text: beam.name, filter: query)
+                        inspector.NumberRow("Span", value: beam.span, unit: "mm", decimals: 0, min: 0.0,
+                                            help: "Try 20 ft, or 6 m + 250", filter: query) { log = "span = {beam.span} mm" }
+                        inspector.ToggleRow("Braced", isOn: beam.braced, filter: query) { log = "braced = {beam.braced}" }
+                    }
+                    inspector.Section("Section") {
+                        inspector.NumberRow("Depth", value: beam.depth, unit: "mm", decimals: 0, min: 100.0, max: 2000.0,
+                                            step: 25.0, filter: query) { log = "depth = {beam.depth} mm" }
+                        inspector.NumberRow("Width", value: beam.width, unit: "mm", decimals: 0, min: 100.0, step: 25.0,
+                                            filter: query) { log = "width = {beam.width} mm" }
+                        inspector.InfoRow("Area", "{inspector.formatNumber(beam.depth * beam.width / 1e6, decimals: 4)} m²",
+                                          filter: query)
+                    }
+                    inspector.Section("Reinforcement") {
+                        inspector.IntegerRow("Bars", value: beam.bars, min: 2.0, max: 12.0, filter: query) { log = "bars = {beam.bars}" }
+                        inspector.ChoiceRow("Grade", selection: beam.grade, options: ["Grade 40", "Grade 60", "Grade 75"],
+                                            filter: query) { log = "grade = {beam.grade}" }
+                        inspector.ColorRow("Color", color: beam.tint, filter: query) { log = "color changed" }
+                    }
+                }
+            }
+        }
+        .frame(width: 380)
+        .background(.background)
+
+        Divider()
+
+        VStack(spacing: 0, alignment: .leading) {
+            HStack(spacing: 6) {
+                for (k, s) in shapes.enumerated() {
+                    Text(s.name)
+                        .font(size: 12)
+                        .padding(horizontal: 8, vertical: 4)
+                        .background(if selected.contains(k) { .highlight } else { .lightGray }, radius: 6)
+                        .onTap {
+                            if selected.contains(k) {
+                                selected.removeAll(where: { i in i == k })
+                            } else {
+                                selected.append(k)
+                            }
+                        }
+                }
+            }
+            .padding(10)
+            Divider()
+            inspector.Inspector(properties: shapeProperties(shapes, selected), title: "Selection") { key, value in
+                if key == "delete" {
+                    log = "delete pressed"
+                } else {
+                    apply(shapes, selected, key, value)
+                    log = "{key} changed"
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    Divider()
+    Text(log).font(size: 12).color(.secondary).padding(8).frame(maxWidth: .infinity, alignment: .leading)
+    }
+}

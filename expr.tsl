@@ -1,0 +1,556 @@
+// inspector: what's typed in a number field. It can be a number, a sum
+// ("2*3.5 + 1"), and numbers with units ("3 ft", "12 kN/m", "5'6\""), which
+// are converted to the field's unit. A plain number is in the field's own
+// unit, also when it's added to one with a unit ("1 m + 50" in a field in
+// mm is 1050).
+//
+// Author: Alexius Academia
+// Date: 2026-10-25
+
+// A piece of the typed text.
+struct Token {
+    kind: Int
+    text: String = ""
+    value: Float = 0.0
+    // Whether there was a space before it.
+    spaced: Bool = false
+}
+
+let tokNumber = 0
+let tokName = 1
+let tokOp = 2
+let tokPower = 3
+let tokEnd = 4
+
+// A value while it's worked out: in SI, with its dimension. `bare` is a
+// plain number with no unit anywhere in it; `absolute` is a temperature
+// given with °C or °F, which can't take part in a sum.
+struct Quantity {
+    v: Float
+    dims: [Int] = [0, 0, 0, 0, 0]
+    bare: Bool = false
+    absolute: Bool = false
+}
+
+let functionNames: Set<String> = ["sqrt", "abs", "sin", "cos", "tan", "asin", "acos", "atan", "ln", "log", "exp", "round"]
+
+// Splits text into tokens; sets `problem` when it can't.
+fn tokenize(_ text: String) -> ([Token], String) {
+    let chars = text.characters
+    var out: [Token] = []
+    var i = 0
+    var spaced = false
+    while i < chars.count {
+        let ch = chars[i]
+        if ch == " " || ch == "\t" {
+            spaced = true
+            i += 1
+            continue
+        }
+        if (ch >= "0" && ch <= "9") || (ch == "." && i + 1 < chars.count && chars[i + 1] >= "0" && chars[i + 1] <= "9") {
+            var s = ""
+            while i < chars.count && ((chars[i] >= "0" && chars[i] <= "9") || chars[i] == ".") {
+                s += chars[i]
+                i += 1
+            }
+            // An exponent: 1e3, 2.5E-4.
+            if i < chars.count && (chars[i] == "e" || chars[i] == "E") {
+                var k = i + 1
+                if k < chars.count && (chars[k] == "-" || chars[k] == "+") {
+                    k += 1
+                }
+                if k < chars.count && chars[k] >= "0" && chars[k] <= "9" {
+                    s += "e"
+                    i += 1
+                    while i < chars.count && ((chars[i] >= "0" && chars[i] <= "9") || chars[i] == "-" || chars[i] == "+") {
+                        if (chars[i] == "-" || chars[i] == "+") && i != k - 1 {
+                            break
+                        }
+                        s += chars[i]
+                        i += 1
+                    }
+                }
+            }
+            if let x = Float(s) {
+                out.append(Token(kind: tokNumber, text: s, value: x, spaced: spaced))
+            } else {
+                return (out, "\"{s}\" isn't a number")
+            }
+        } else if ch == "'" || ch == "\"" || ch == "%" {
+            out.append(Token(kind: tokName, text: ch, spaced: spaced))
+            i += 1
+        } else if isUnitChar(ch) || ch == "π" {
+            var s = ""
+            while i < chars.count && isUnitChar(chars[i]) && chars[i] != "'" && chars[i] != "\"" && chars[i] != "%" {
+                s += chars[i]
+                i += 1
+            }
+            if s.isEmpty {
+                s = ch
+                i += 1
+            }
+            out.append(Token(kind: tokName, text: s, spaced: spaced))
+        } else if let d = superscript(ch) {
+            var n = d
+            i += 1
+            while i < chars.count {
+                if let more = superscript(chars[i]) {
+                    n = n * 10 + more
+                    i += 1
+                } else {
+                    break
+                }
+            }
+            out.append(Token(kind: tokPower, value: Float(n), spaced: spaced))
+        } else if ch == "⁻" && i + 1 < chars.count && superscript(chars[i + 1]) != nil {
+            var n = 0
+            i += 1
+            while i < chars.count {
+                if let more = superscript(chars[i]) {
+                    n = n * 10 + more
+                    i += 1
+                } else {
+                    break
+                }
+            }
+            out.append(Token(kind: tokPower, value: Float(-n), spaced: spaced))
+        } else {
+            let op = match ch {
+                "−" -> "-"
+                "×" -> "*"
+                "·" -> "*"
+                "÷" -> "/"
+                _ -> ch
+            }
+            if !["+", "-", "*", "/", "^", "(", ")"].contains(op) {
+                return (out, "\"{ch}\" can't be used here")
+            }
+            out.append(Token(kind: tokOp, text: op, spaced: spaced))
+            i += 1
+        }
+        spaced = false
+    }
+    out.append(Token(kind: tokEnd))
+    (out, "")
+}
+
+// Reads tokens into a value. `field` is the unit plain numbers are in.
+struct Calc {
+    tokens: [Token]
+    field: Unit
+    at: Int = 0
+    problem: String = ""
+
+    fn peek() -> Token {
+        tokens[at]
+    }
+
+    fn peekAt(_ k: Int) -> Token {
+        if at + k < tokens.count { tokens[at + k] } else { tokens[tokens.count - 1] }
+    }
+
+    fn isOp(_ t: Token, _ op: String) -> Bool {
+        t.kind == tokOp && t.text == op
+    }
+
+    fn fail(_ message: String) -> Quantity {
+        if problem.isEmpty {
+            problem = message
+        }
+        Quantity(v: 0.0, bare: true)
+    }
+
+    // Whether token t is the name of a unit.
+    fn isUnit(_ t: Token) -> Bool {
+        t.kind == tokName && unitTable[t.text] != nil
+    }
+
+    // One unit with its power: "m", "m^2", "m2", "m²".
+    fn unitFactor() -> Unit {
+        let t = peek()
+        at += 1
+        let base = unitTable[t.text] ?? Unit(factor: 1.0, dims: noDims)
+        var p = 1
+        let next = peek()
+        if next.kind == tokPower {
+            p = Int(next.value)
+            at += 1
+        } else if isOp(next, "^") {
+            var sign = 1
+            var k = 1
+            if isOp(peekAt(1), "-") {
+                sign = -1
+                k = 2
+            }
+            let n = peekAt(k)
+            if n.kind == tokNumber && n.value == floor(n.value) {
+                p = sign * Int(n.value)
+                at += k + 1
+            } else {
+                let ignored = fail("a unit's power must be a whole number")
+            }
+        } else if next.kind == tokNumber && !next.spaced && next.value == floor(next.value) && !next.text.contains(".") && t.text != "'" && t.text != "\"" {
+            p = Int(next.value)
+            at += 1
+        }
+        if p == 1 {
+            return base
+        }
+        if base.offset != 0.0 {
+            let ignored = fail("\"{t.text}\" can't have a power")
+        }
+        Unit(factor: pow(base.factor, Float(p)), dims: base.dims.map { d in d * p })
+    }
+
+    // A unit written after a number: factors joined by * · / or a space.
+    fn unitSuffix() -> Unit {
+        let first = unitFactor()
+        var factor = first.factor
+        var dims = first.dims
+        var parts = 1
+        while true {
+            let t = peek()
+            var divide = false
+            if (isOp(t, "*") || isOp(t, "/")) && isUnit(peekAt(1)) {
+                divide = isOp(t, "/")
+                at += 1
+            } else if !isUnit(t) {
+                break
+            }
+            let u = unitFactor()
+            if u.offset != 0.0 {
+                let ignored = fail("a temperature unit can't be combined with others")
+            }
+            factor = if divide { factor / u.factor } else { factor * u.factor }
+            for k in 0..5 {
+                dims[k] = if divide { dims[k] - u.dims[k] } else { dims[k] + u.dims[k] }
+            }
+            parts += 1
+        }
+        if parts > 1 && first.offset != 0.0 {
+            let ignored = fail("a temperature unit can't be combined with others")
+            return Unit(factor: factor, dims: dims)
+        }
+        Unit(factor: factor, dims: dims, offset: if parts == 1 { first.offset } else { 0.0 })
+    }
+
+    // x in unit u.
+    fn withUnit(_ x: Float, _ u: Unit) -> Quantity {
+        if u.offset != 0.0 {
+            return Quantity(v: x * u.factor + u.offset, dims: u.dims, absolute: true)
+        }
+        Quantity(v: x * u.factor, dims: u.dims)
+    }
+
+    fn expression() -> Quantity {
+        var q = term()
+        while isOp(peek(), "+") || isOp(peek(), "-") {
+            let minus = isOp(peek(), "-")
+            at += 1
+            var r = term()
+            if minus {
+                r.v = -r.v
+            }
+            q = add(q, r)
+        }
+        q
+    }
+
+    // a + b, with a plain number taking the field's unit next to one that
+    // has the field's dimension.
+    fn add(_ a0: Quantity, _ b0: Quantity) -> Quantity {
+        var a = a0
+        var b = b0
+        if a.absolute || b.absolute {
+            return fail("a temperature in °C or °F can't be added to; type it on its own")
+        }
+        if a.dims != b.dims {
+            if a.bare && b.dims == field.dims {
+                a = Quantity(v: a.v * field.factor, dims: field.dims)
+            } else if b.bare && a.dims == field.dims {
+                b = Quantity(v: b.v * field.factor, dims: field.dims)
+            } else {
+                return fail("can't add {dimName(a.dims)} and {dimName(b.dims)}")
+            }
+        }
+        Quantity(v: a.v + b.v, dims: a.dims, bare: a.bare && b.bare)
+    }
+
+    fn term() -> Quantity {
+        var q = unary()
+        while isOp(peek(), "*") || isOp(peek(), "/") {
+            let divide = isOp(peek(), "/")
+            at += 1
+            let r = unary()
+            if q.absolute || r.absolute {
+                return fail("a temperature in °C or °F can't be multiplied; type it on its own")
+            }
+            var dims = q.dims
+            for k in 0..5 {
+                dims[k] = if divide { dims[k] - r.dims[k] } else { dims[k] + r.dims[k] }
+            }
+            if divide && r.v == 0.0 {
+                return fail("division by zero")
+            }
+            q = Quantity(v: if divide { q.v / r.v } else { q.v * r.v }, dims: dims, bare: q.bare && r.bare)
+        }
+        q
+    }
+
+    fn unary() -> Quantity {
+        if isOp(peek(), "-") {
+            at += 1
+            var q = unary()
+            q.v = -q.v
+            return q
+        }
+        if isOp(peek(), "+") {
+            at += 1
+            return unary()
+        }
+        power()
+    }
+
+    fn power() -> Quantity {
+        var q = primary()
+        var p = 0.0
+        var has = false
+        if peek().kind == tokPower {
+            p = peek().value
+            has = true
+            at += 1
+        } else if isOp(peek(), "^") {
+            at += 1
+            let e = unary()
+            if e.dims != noDims {
+                return fail("a power can't have a unit")
+            }
+            p = e.v
+            has = true
+        }
+        if !has {
+            return q
+        }
+        if q.dims != noDims && p != floor(p) {
+            return fail("a value with a unit can only be raised to a whole power")
+        }
+        if q.absolute {
+            return fail("a temperature in °C or °F can't be raised to a power")
+        }
+        Quantity(v: pow(q.v, p), dims: q.dims.map { d in d * Int(p) }, bare: q.bare)
+    }
+
+    fn primary() -> Quantity {
+        let t = peek()
+        if t.kind == tokNumber {
+            at += 1
+            if peek().kind == tokName && !functionNames.contains(peek().text) && peek().text != "pi" && peek().text != "π" {
+                if !isUnit(peek()) {
+                    return fail("\"{peek().text}\" isn't a unit inspector knows")
+                }
+                var q = withUnit(t.value, unitSuffix())
+                // 5'6", 5 ft 6 in: one length written in two units.
+                while peek().kind == tokNumber && isUnit(peekAt(1)) {
+                    let more = peek().value
+                    at += 1
+                    let r = withUnit(more, unitSuffix())
+                    if r.dims != q.dims || r.absolute || q.absolute {
+                        return fail("\"{t.text}\" and \"{more}\" need an operator between them")
+                    }
+                    q.v += r.v
+                }
+                return q
+            }
+            return Quantity(v: t.value, bare: true)
+        }
+        if isOp(t, "(") {
+            at += 1
+            let q = expression()
+            if !isOp(peek(), ")") {
+                return fail("a ( isn't closed")
+            }
+            at += 1
+            if isUnit(peek()) {
+                let u = unitSuffix()
+                if u.offset != 0.0 {
+                    return withUnit(q.v, u)
+                }
+                var dims = q.dims
+                for k in 0..5 {
+                    dims[k] += u.dims[k]
+                }
+                return Quantity(v: q.v * u.factor, dims: dims)
+            }
+            return q
+        }
+        if t.kind == tokName {
+            if t.text == "pi" || t.text == "π" {
+                at += 1
+                return Quantity(v: pi, bare: true)
+            }
+            if functionNames.contains(t.text) {
+                at += 1
+                if !isOp(peek(), "(") {
+                    return fail("{t.text} needs ( after it")
+                }
+                at += 1
+                let arg = expression()
+                if !isOp(peek(), ")") {
+                    return fail("a ( isn't closed")
+                }
+                at += 1
+                return call(t.text, arg)
+            }
+            if isUnit(t) {
+                // A unit on its own is one of it: "kN/m" is 1 kN/m.
+                return withUnit(1.0, unitSuffix())
+            }
+            return fail("\"{t.text}\" isn't a unit inspector knows")
+        }
+        if t.kind == tokEnd {
+            return fail("a number is missing at the end")
+        }
+        fail("\"{t.text}\" can't be here")
+    }
+
+    fn call(_ name: String, _ q: Quantity) -> Quantity {
+        let angle = [0, 0, 0, 0, 1]
+        if name == "sqrt" {
+            if q.v < 0.0 {
+                return fail("the square root of a negative number")
+            }
+            for d in q.dims {
+                if d % 2 != 0 {
+                    return fail("the square root of {dimName(q.dims)} has no unit")
+                }
+            }
+            return Quantity(v: sqrt(q.v), dims: q.dims.map { d in d / 2 }, bare: q.bare)
+        }
+        if name == "abs" {
+            return Quantity(v: abs(q.v), dims: q.dims, bare: q.bare, absolute: q.absolute)
+        }
+        if name == "round" {
+            return Quantity(v: round(q.v), dims: q.dims, bare: q.bare)
+        }
+        if name == "sin" || name == "cos" || name == "tan" {
+            // A plain number is in degrees, as in CAD programs.
+            var r = q.v
+            if q.dims == noDims {
+                r = q.v * pi / 180.0
+            } else if q.dims != angle {
+                return fail("{name} needs an angle")
+            }
+            let v = if name == "sin" { sin(r) } else if name == "cos" { cos(r) } else { tan(r) }
+            return Quantity(v: v, bare: true)
+        }
+        if q.dims != noDims {
+            return fail("{name} needs a plain number")
+        }
+        if name == "asin" || name == "acos" || name == "atan" {
+            if name != "atan" && (q.v < -1.0 || q.v > 1.0) {
+                return fail("{name} needs a number from -1 to 1")
+            }
+            let v = if name == "asin" { asin(q.v) } else if name == "acos" { acos(q.v) } else { atan(q.v) }
+            return Quantity(v: v, dims: angle)
+        }
+        if name == "ln" || name == "log" {
+            if q.v <= 0.0 {
+                return fail("{name} needs a number above 0")
+            }
+            return Quantity(v: if name == "ln" { log(q.v) } else { log10(q.v) }, bare: true)
+        }
+        Quantity(v: exp(q.v), bare: true)
+    }
+}
+
+// The unit a field is in: nil when it isn't one inspector knows (then it's
+// only shown, and only plain numbers can be typed).
+fn parseUnit(_ unit: String) -> Unit? {
+    if unit.trim().isEmpty {
+        return Unit(factor: 1.0, dims: noDims)
+    }
+    let (tokens, problem) = tokenize(unit)
+    if !problem.isEmpty || tokens[0].kind != tokName || unitTable[tokens[0].text] == nil {
+        return nil
+    }
+    var c = Calc(tokens: tokens, field: Unit(factor: 1.0, dims: noDims))
+    let u = c.unitSuffix()
+    if !c.problem.isEmpty || c.peek().kind != tokEnd {
+        return nil
+    }
+    u
+}
+
+// evaluate(text, unit:)
+//   What's typed in a number field, as a number in `unit`: a number, a sum
+//   like "2*3.5 + 1", or numbers with units ("3 ft", "12 kN/m", "5'6\"",
+//   "68 °F") converted to `unit`. A plain number is in `unit`. Functions:
+//   sqrt abs round sin cos tan (of degrees, or an angle with a unit) asin
+//   acos atan ln log exp, and pi. A failure says what's wrong.
+//
+//   print(inspector.evaluate("3 ft + 2 in", unit: "mm").value() ?? 0.0)   // 965.2
+public fn evaluate(_ text: String, unit: String = "") -> Result<Float> {
+    if text.trim().isEmpty {
+        return Result.failure(error: Error("type a number"))
+    }
+    let known = parseUnit(unit)
+    let field = known ?? Unit(factor: 1.0, dims: noDims)
+    let (tokens, problem) = tokenize(text)
+    if !problem.isEmpty {
+        return Result.failure(error: Error(problem))
+    }
+    var c = Calc(tokens: tokens, field: field)
+    let q = c.expression()
+    if c.problem.isEmpty && c.peek().kind != tokEnd {
+        let t = c.peek()
+        c.problem = if t.kind == tokNumber { "an operator is missing before \"{t.text}\"" } else { "\"{t.text}\" can't be here" }
+    }
+    if !c.problem.isEmpty {
+        return Result.failure(error: Error(c.problem))
+    }
+    if q.bare || (q.dims == noDims && field.dims == noDims) {
+        // A plain number is in the field's unit; so is a ratio like 10 m / 2 m.
+        if !q.bare && field.factor != 1.0 {
+            return Result.ok(value: q.v / field.factor)
+        }
+        return Result.ok(value: q.v)
+    }
+    if known == nil {
+        return Result.failure(error: Error("type a plain number: inspector doesn't know the unit \"{unit}\""))
+    }
+    if q.dims == noDims && !q.bare {
+        return Result.ok(value: q.v)
+    }
+    if q.dims == field.dims {
+        if q.absolute || field.offset != 0.0 {
+            return Result.ok(value: (q.v - field.offset) / field.factor)
+        }
+        return Result.ok(value: q.v / field.factor)
+    }
+    if field.dims == noDims && q.dims == [0, 0, 0, 0, 1] && unit.trim().isEmpty {
+        return Result.ok(value: q.v)
+    }
+    if field.dims == noDims {
+        return Result.failure(error: Error("this field takes a plain number, not {dimName(q.dims)}"))
+    }
+    Result.failure(error: Error("this field takes {dimName(field.dims)} ({unit}), not {dimName(q.dims)}"))
+}
+
+// formatNumber(x, decimals:)
+//   x with at most `decimals` decimals and no zeros at the end: 2.5, 300,
+//   0.125.
+public fn formatNumber(_ x: Float, decimals: Int = 4) -> String {
+    if !x.isFinite {
+        return "{x}"
+    }
+    var s = x.formatted(decimals: max(0, decimals))
+    if s.contains(".") {
+        while s.hasSuffix("0") {
+            s = s.substring(from: 0, to: s.count - 1)
+        }
+        if s.hasSuffix(".") {
+            s = s.substring(from: 0, to: s.count - 1)
+        }
+    }
+    if s == "-0" { "0" } else { s }
+}

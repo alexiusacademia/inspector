@@ -1,0 +1,218 @@
+// inspector: the Inspector view, built from a list of properties: for a
+// panel whose rows change with what's selected. Each property says what it
+// is (a number, a choice…), its value, and its group; the view draws the
+// rows under a heading per group, with a search box over them, and hands
+// each change back as the property's key and its new Value.
+//
+// Author: Alexius Academia
+// Date: 2026-10-25
+
+// What kind of row a property is.
+public enum Kind {
+    number
+    integer
+    text
+    toggle
+    choice
+    color
+    info
+    action
+}
+
+// A changed value, as the Inspector gives it back.
+public enum Value {
+    number(x: Float)
+    text(s: String)
+    toggle(on: Bool)
+    color(c: Color)
+    pressed
+}
+
+// One row of an Inspector. Make one with `inspector.number(…)`,
+// `inspector.choice(…)` and the rest, rather than field by field.
+public struct Property {
+    key: String
+    label: String
+    kind: Kind = .text
+    group: String = ""
+    number: Float = 0.0
+    text: String = ""
+    on: Bool = false
+    color: Color = .black
+    unit: String = ""
+    decimals: Int = 4
+    min: Float = -unlimited
+    max: Float = unlimited
+    step: Float = 0.0
+    options: [String] = []
+    readOnly: Bool = false
+    // The selected things have different values here.
+    mixed: Bool = false
+    help: String = ""
+}
+
+// number(key, label, value, unit:, decimals:, min:, max:, step:, group:, readOnly:, mixed:, help:)
+//   A number row: see NumberRow. Changes come back as `.number(x)`.
+public fn number(_ key: String, _ label: String, _ value: Float, unit: String = "", decimals: Int = 4,
+                 min: Float = -unlimited, max: Float = unlimited, step: Float = 0.0, group: String = "",
+                 readOnly: Bool = false, mixed: Bool = false, help: String = "") -> Property {
+    Property(key: key, label: label, kind: .number, group: group, number: value, unit: unit, decimals: decimals,
+             min: min, max: max, step: step, readOnly: readOnly, mixed: mixed, help: help)
+}
+
+// integer(key, label, value, …)
+//   A whole number row. Changes come back as `.number(x)`, a whole number.
+public fn integer(_ key: String, _ label: String, _ value: Int, unit: String = "", min: Float = -unlimited,
+                  max: Float = unlimited, step: Float = 1.0, group: String = "", readOnly: Bool = false,
+                  mixed: Bool = false, help: String = "") -> Property {
+    Property(key: key, label: label, kind: .integer, group: group, number: Float(value), unit: unit, decimals: 0,
+             min: min, max: max, step: step, readOnly: readOnly, mixed: mixed, help: help)
+}
+
+// text(key, label, value, …)
+//   A text row. Changes come back as `.text(s)`.
+public fn text(_ key: String, _ label: String, _ value: String, group: String = "", readOnly: Bool = false,
+               mixed: Bool = false, help: String = "") -> Property {
+    Property(key: key, label: label, kind: .text, group: group, text: value, readOnly: readOnly, mixed: mixed, help: help)
+}
+
+// toggle(key, label, on, …)
+//   An on/off row. Changes come back as `.toggle(on)`.
+public fn toggle(_ key: String, _ label: String, _ on: Bool, group: String = "", readOnly: Bool = false,
+                 mixed: Bool = false, help: String = "") -> Property {
+    Property(key: key, label: label, kind: .toggle, group: group, on: on, readOnly: readOnly, mixed: mixed, help: help)
+}
+
+// choice(key, label, value, options, …)
+//   A row to pick one of `options`. Changes come back as `.text(option)`.
+public fn choice(_ key: String, _ label: String, _ value: String, _ options: [String], group: String = "",
+                 readOnly: Bool = false, mixed: Bool = false, help: String = "") -> Property {
+    Property(key: key, label: label, kind: .choice, group: group, text: value, options: options, readOnly: readOnly,
+             mixed: mixed, help: help)
+}
+
+// color(key, label, color, …)
+//   A color row. Changes come back as `.color(c)`.
+public fn color(_ key: String, _ label: String, _ value: Color, group: String = "", readOnly: Bool = false,
+                mixed: Bool = false, help: String = "") -> Property {
+    Property(key: key, label: label, kind: .color, group: group, color: value, readOnly: readOnly, mixed: mixed, help: help)
+}
+
+// info(key, label, value, …)
+//   A value to read only: a result, a count.
+public fn info(_ key: String, _ label: String, _ value: String, group: String = "", help: String = "") -> Property {
+    Property(key: key, label: label, kind: .info, group: group, text: value, readOnly: true, help: help)
+}
+
+// action(key, label, title, …)
+//   A button. A click comes back as `.pressed`.
+public fn action(_ key: String, _ label: String, _ title: String, group: String = "", help: String = "") -> Property {
+    Property(key: key, label: label, kind: .action, group: group, text: title, help: help)
+}
+
+// The groups, in the order their first property comes.
+fn groupsOf(_ properties: [Property]) -> [String] {
+    var out: [String] = []
+    for p in properties {
+        if !out.contains(p.group) {
+            out.append(p.group)
+        }
+    }
+    out
+}
+
+// The properties of group g that show for the search text: all of them
+// when the group's name has it, else those whose label has it.
+fn visibleIn(_ properties: [Property], _ g: String, _ query: String) -> [Property] {
+    let groupMatches = !g.isEmpty && shows(g, query)
+    properties.filter { p in p.group == g && (groupMatches || shows(p.label, query)) }
+}
+
+// One property's row.
+view PropertyRow(p: Property, labelWidth: Float, onChange: fn(String, Value)) {
+    if p.kind == .number {
+        NumberEditor(label: p.label, current: p.number, unit: p.unit, decimals: p.decimals, lo: p.min, hi: p.max,
+                     step: p.step, mixed: p.mixed, readOnly: p.readOnly, labelWidth: labelWidth,
+                     help: p.help) { x in onChange(p.key, .number(x: x)) }
+    } else if p.kind == .integer {
+        NumberEditor(label: p.label, current: p.number, unit: p.unit, decimals: 0, lo: p.min, hi: p.max,
+                     step: p.step, mixed: p.mixed, readOnly: p.readOnly, labelWidth: labelWidth,
+                     help: p.help) { x in onChange(p.key, .number(x: round(x))) }
+    } else if p.kind == .text {
+        TextEditor(label: p.label, current: p.text, mixed: p.mixed, readOnly: p.readOnly, labelWidth: labelWidth,
+                   help: p.help) { s in onChange(p.key, .text(s: s)) }
+    } else if p.kind == .toggle {
+        ToggleEditor(label: p.label, on: p.on, mixed: p.mixed, readOnly: p.readOnly, labelWidth: labelWidth,
+                     help: p.help) { on in onChange(p.key, .toggle(on: on)) }
+    } else if p.kind == .choice {
+        ChoiceEditor(label: p.label, current: p.text, options: p.options, mixed: p.mixed, readOnly: p.readOnly,
+                     labelWidth: labelWidth, help: p.help) { o in onChange(p.key, .text(s: o)) }
+    } else if p.kind == .color {
+        ColorEditor(label: p.label, current: p.color, mixed: p.mixed, readOnly: p.readOnly, labelWidth: labelWidth,
+                    help: p.help) { c in onChange(p.key, .color(c: c)) }
+    } else if p.kind == .info {
+        InfoEditor(label: p.label, value: p.text, labelWidth: labelWidth, help: p.help)
+    } else {
+        ButtonEditor(label: p.label, title: p.text, labelWidth: labelWidth, help: p.help) { onChange(p.key, .pressed) }
+    }
+}
+
+// Inspector(properties:, title:, search:, labelWidth:, emptyText:, onChange:)
+//   A panel of the properties' rows, under a heading for each group (in
+//   the order the groups first come), with a search box over them that
+//   shows only the rows whose label (or group) has what's typed. It
+//   scrolls when it's taller than its space. Each change calls `onChange`
+//   with the property's key and its new value; make the properties again
+//   from your data, and the panel shows them.
+//
+//   inspector.Inspector(properties: [
+//       inspector.number("w", "Width", beam.width, unit: "mm", group: "Section"),
+//       inspector.choice("g", "Grade", beam.grade, ["A36", "A992"], group: "Material"),
+//   ]) { key, value in apply(key, value) }
+public view Inspector(properties: [Property], title: String = "", search: Bool = true,
+                      labelWidth: Float = defaultLabelWidth, emptyText: String = "Nothing selected",
+                      onChange: fn(String, Value)) {
+    state query = ""
+    state closed: [String] = []
+
+    VStack(spacing: 0, alignment: .leading) {
+        if !title.isEmpty {
+            Text(title)
+                .font(size: 13, weight: .semibold)
+                .padding(horizontal: 10, vertical: 8)
+        }
+        if search && !properties.isEmpty {
+            SearchBox(text: query)
+            Divider()
+        }
+        Scroll {
+            VStack(spacing: 0, alignment: .leading) {
+                if properties.isEmpty {
+                    Text(emptyText).font(size: 13).color(.secondary).padding(12)
+                } else if groupsOf(properties).all(where: { g in visibleIn(properties, g, query).isEmpty }) {
+                    Text("No property matches “{query}”").font(size: 13).color(.secondary).padding(12)
+                }
+                for g in groupsOf(properties) {
+                    if !visibleIn(properties, g, query).isEmpty {
+                        if !g.isEmpty {
+                            SectionHeading(title: g, open: !closed.contains(g) || !query.isEmpty) {
+                                if closed.contains(g) {
+                                    closed.removeAll(where: { c in c == g })
+                                } else {
+                                    closed.append(g)
+                                }
+                            }
+                            .id("group|{g}")
+                        }
+                        if g.isEmpty || !closed.contains(g) || !query.isEmpty {
+                            for p in visibleIn(properties, g, query) {
+                                PropertyRow(p: p, labelWidth: labelWidth, onChange: onChange)
+                                    .id(p.key)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

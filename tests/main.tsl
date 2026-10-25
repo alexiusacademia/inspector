@@ -1,0 +1,187 @@
+// inspector's tests of what has no window: what number fields read
+// (evaluate), how numbers are shown (formatNumber), and the properties
+// the Inspector is built from. The expected values were worked out in
+// Python from the units' exact definitions. The panels themselves are
+// tested by tests/ui.sh, which drives the example app without a window.
+// `tessel run tests` prints the failures and a count, and exits with 1 if
+// any check failed.
+//
+// Author: Alexius Academia
+// Date: 2026-10-25
+
+import ".."
+
+// Checks that `got` is true: 1 if it isn't.
+fn holds(_ name: String, _ got: Bool) -> Int {
+    if got {
+        print("ok    {name}")
+        return 0
+    }
+    print("FAIL  {name}")
+    1
+}
+
+// Checks that `text` in a field in `unit` reads as `expected`.
+fn reads(_ text: String, _ unit: String, _ expected: Float) -> Int {
+    match inspector.evaluate(text, unit: unit) {
+        .ok(x) -> {
+            if abs(x - expected) <= 1e-9 * max(1.0, abs(expected)) {
+                print("ok    {text} in [{unit}] = {x}")
+                return 0
+            }
+            print("FAIL  {text} in [{unit}] = {x}, expected {expected}")
+            return 1
+        }
+        .failure(e) -> {
+            print("FAIL  {text} in [{unit}]: {e.message}")
+            return 1
+        }
+    }
+}
+
+// Checks that `text` in a field in `unit` fails with a message containing `part`.
+fn refuses(_ text: String, _ unit: String, _ part: String) -> Int {
+    match inspector.evaluate(text, unit: unit) {
+        .ok(x) -> {
+            print("FAIL  {text} in [{unit}] read as {x}, expected a failure")
+            return 1
+        }
+        .failure(e) -> {
+            if e.message.contains(part) {
+                print("ok    {text} in [{unit}]: {e.message}")
+                return 0
+            }
+            print("FAIL  {text} in [{unit}]: \"{e.message}\" doesn't mention \"{part}\"")
+            return 1
+        }
+    }
+}
+
+fn evaluating() -> Int {
+    var failed = 0
+    let cases: [(String, String, Float)] = [
+        ("42", "", 42.0), ("2*3.5 + 1", "", 8.0), (" 7 ", "mm", 7.0), (".5", "", 0.5),
+        ("3 ft", "mm", 914.4000000000001),
+        ("3 ft + 2 in", "mm", 965.2),
+        ("5'6\"", "in", 66.0),
+        ("5 ft 6 in", "m", 1.6764000000000001),
+        ("1 m + 50", "mm", 1050.0),
+        ("12 kN/m", "N/mm", 12.0),
+        ("100 psi", "kPa", 689.4757293168361),
+        ("68 °F", "°C", 20.0),
+        ("300 K", "°C", 26.85),
+        ("2 m^2", "mm²", 2000000.0),
+        ("10 m3/s", "cfs", 353.14666721488584),
+        ("sqrt(16 m²)", "m", 4.0),
+        ("asin(0.5)", "deg", 30.0),
+        ("sin(30)", "", 0.5),
+        ("50%", "", 0.5),
+        ("50", "%", 50.0),
+        ("2^10", "", 1024.0),
+        ("1e3 mm", "m", 1.0),
+        ("-(2+3)*4", "", -20.0),
+        ("10 kN·m", "kip·ft", 7.3756214927726536),
+        ("2.5E-3 m", "mm", 2.5),
+        ("(1+1) ft", "in", 24.0),
+        ("1 h", "min", 60.0),
+        ("60 mph", "km/h", 96.56064),
+        ("1 ksi", "MPa", 6.894757293168361),
+        ("1 acre", "m²", 4046.8564224),
+        ("1 gal", "L", 3.785411784),
+        ("1 lb", "kg", 0.45359237),
+        ("1 kip", "kN", 4.4482216152605),
+        ("32 °F", "K", 273.15),
+        ("100", "°C", 100.0),
+        ("(pi/2) rad", "deg", 90.0),
+        ("1 m/s", "km/h", 3.6),
+        ("10 kN / 2 m²", "kPa", 5.0),
+        ("2 m × 3 m", "m²", 6.0),
+        ("9.81 kN/m³", "N/m³", 9810.0),
+        ("3 kN·m / 2 m", "kN", 1.5),
+        ("1 t", "kg", 1000.0),
+        ("1 bar", "psi", 14.503773773020923),
+        ("1 kWh", "MJ", 3.6),
+        ("1 hp", "kW", 0.7456998715822702),
+        ("2 + 3 * 4", "", 14.0),
+        ("(2 + 3) * 4", "", 20.0),
+        ("2 ^ 3 ^ 2", "", 512.0),
+        ("10 / 4", "", 2.5),
+        ("−3 + 1", "", -2.0),
+        ("abs(-2 m)", "mm", 2000.0),
+        ("round(2.6)", "", 3.0),
+        ("ln(1)", "", 0.0),
+        ("log(1000)", "", 3.0),
+        ("cos(60)", "", 0.5),
+        ("tan(45)", "", 1.0),
+        ("sin(30 deg)", "", 0.5),
+        ("atan(1)", "deg", 45.0),
+        ("1 µm", "mm", 0.001),
+        ("1 nmi", "km", 1.852),
+        ("1 ft²", "in²", 144.0),
+        ("1 ft³", "L", 28.316846592000005),
+        ("1 MGD", "cfs", 1.5472286522602352),
+        ("7", "blows/ft", 7.0),
+    ]
+    for c in cases {
+        failed += reads(c.0, c.1, c.2)
+    }
+    failed += refuses("", "", "type a number")
+    failed += refuses("3 kg", "mm", "takes a length (mm), not a mass")
+    failed += refuses("2 m", "", "takes a plain number, not a length")
+    failed += refuses("2 +", "", "missing at the end")
+    failed += refuses("(2+3", "", "isn't closed")
+    failed += refuses("2 3", "", "operator is missing")
+    failed += refuses("5 xyz", "m", "\"xyz\" isn't a unit")
+    failed += refuses("1/0", "", "division by zero")
+    failed += refuses("1 m + 2 kg", "m", "can't add a length and a mass")
+    failed += refuses("20 °C + 5", "K", "type it on its own")
+    failed += refuses("7 m", "blows/ft", "doesn't know the unit")
+    failed += refuses("sqrt(-4)", "", "negative")
+    failed += refuses("sqrt(2 m)", "", "has no unit")
+    failed += refuses("2 # 3", "", "can't be used here")
+    failed += refuses("sin(2 m)", "", "needs an angle")
+    failed += refuses("asin(2)", "deg", "from -1 to 1")
+    failed += refuses("2^(1 m)", "", "can't have a unit")
+    failed += refuses("(2 m)^0.5", "", "whole power")
+    failed
+}
+
+fn formatting() -> Int {
+    var failed = 0
+    failed += holds("formatNumber trims zeros", inspector.formatNumber(2.5, decimals: 4) == "2.5")
+    failed += holds("formatNumber keeps whole numbers whole", inspector.formatNumber(300.0, decimals: 2) == "300")
+    failed += holds("formatNumber rounds", inspector.formatNumber(0.123456, decimals: 3) == "0.123")
+    failed += holds("formatNumber: no -0", inspector.formatNumber(-0.00001, decimals: 3) == "0")
+    failed += holds("formatNumber: negative", inspector.formatNumber(-12.75, decimals: 1) == "-12.8" || inspector.formatNumber(-12.75, decimals: 1) == "-12.7")
+    failed += holds("formatNumber: 0 decimals", inspector.formatNumber(1234.6, decimals: 0) == "1235")
+    failed
+}
+
+fn properties() -> Int {
+    var failed = 0
+    let n = inspector.number("w", "Width", 300.0, unit: "mm", min: 0.0, group: "Section", mixed: true)
+    failed += holds("number", n.key == "w" && n.label == "Width" && n.kind == .number && n.number == 300.0 &&
+                    n.unit == "mm" && n.min == 0.0 && n.group == "Section" && n.mixed && !n.readOnly)
+    let i = inspector.integer("bars", "Bars", 4, max: 12.0)
+    failed += holds("integer", i.kind == .integer && i.number == 4.0 && i.decimals == 0 && i.max == 12.0 && i.step == 1.0)
+    let c = inspector.choice("g", "Grade", "A36", ["A36", "A992"], group: "Material")
+    failed += holds("choice", c.kind == .choice && c.text == "A36" && c.options == ["A36", "A992"])
+    failed += holds("toggle", inspector.toggle("b", "Braced", true).on)
+    failed += holds("text", inspector.text("n", "Name", "B-12").text == "B-12")
+    failed += holds("color", inspector.color("f", "Fill", .red).color == .red)
+    let info = inspector.info("a", "Area", "0.1 m²")
+    failed += holds("info is read only", info.kind == .info && info.readOnly && info.text == "0.1 m²")
+    failed += holds("action", inspector.action("d", "Selection", "Delete").text == "Delete")
+    failed
+}
+
+fn main() {
+    var failed = evaluating()
+    failed += formatting()
+    failed += properties()
+    if failed > 0 {
+        print("\n{failed} failed")
+        exit(1)
+    }
+    print("\nall passed")
+}
