@@ -1,0 +1,307 @@
+<!doctype html>
+<!--
+  inspector's website: https://inspector-package.syncster.dev
+  Author: Alexius Academia
+  Date: 2026-10-25
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="author" content="Alexius Academia">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>inspector · Property panels for Tessel</title>
+  <meta name="description" content="inspector is a Tessel library for property panels: number rows that take sums and units, choices, colors, switches, sections, search, and Mixed values for a selection.">
+  <meta name="theme-color" content="#6a4bd8">
+  <link rel="canonical" href="https://inspector-package.syncster.dev/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="inspector">
+  <meta property="og:title" content="inspector · Property panels for Tessel">
+  <meta property="og:description" content="Property panels for Tessel apps: number rows that take sums and units (3 ft in a field in mm), choices, colors, sections, search, and Mixed values for a selection.">
+  <meta property="og:url" content="https://inspector-package.syncster.dev/">
+  <meta property="og:image" content="https://inspector-package.syncster.dev/assets/share.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="A property panel made with inspector, with Mixed values for a selection">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#6a4bd8"/><path d="M8 10.5 H13 M8 16 H13 M8 21.5 H13" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><rect x="16" y="8.5" width="9" height="4" rx="1.5" fill="#fff"/><rect x="16" y="14" width="9" height="4" rx="1.5" fill="#fff"/><rect x="16" y="19.5" width="9" height="4" rx="1.5" fill="#fff" opacity=".6"/></svg>
+      inspector <small>for Tessel</small>
+    </a>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="#numbers" class="optional">Number fields</a>
+      <a href="#reference">Reference</a>
+      <a href="https://github.com/alexiusacademia/inspector">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<div class="hero">
+  <div class="wrap">
+    <div>
+      <p class="eyebrow">A Tessel library</p>
+      <h1>Property panels for Tessel apps.</h1>
+      <p class="lede">The two columns of labels and values beside a drawing or a model, as in CAD and design programs. Number rows take sums and units, rows sit in sections with a search box, and a selection shows Mixed where its things differ.</p>
+      <div class="install">
+        <code>tessel add inspector</code>
+        <button class="copy" type="button" data-copy="tessel add inspector">Copy</button>
+      </div>
+      <div class="buttons">
+        <a class="button primary" href="#features">See what it does</a>
+        <a class="button" href="https://github.com/alexiusacademia/inspector">Code on GitHub</a>
+      </div>
+      <p class="meta">MIT licence · Tessel 0.10 or later · no dependencies</p>
+    </div>
+    <figure class="shot">
+      <picture>
+        <source srcset="assets/app-dark.png" media="(prefers-color-scheme: dark)">
+        <img src="assets/app.png" width="1640" height="1120" alt="An app with two panels: rows for a beam on the left, and an Inspector for selected shapes on the right, with Mixed values">
+      </picture>
+    </figure>
+  </div>
+</div>
+
+<section id="features">
+  <div class="wrap">
+    <h2>What it does</h2>
+    <p class="intro">Every picture here is the example app that comes with the library, run by Tessel without a window and saved.</p>
+
+    <div class="features2">
+
+      <article class="fcard">
+        <img src="assets/units.png" width="760" height="400" loading="lazy" alt="A Span field with 20 ft typed in it and an orange arrow showing it isn't applied yet, and a Depth field with 3 kg and a red message: this field takes a length (mm), not a mass">
+        <div class="body">
+          <h3>Sums and units in number fields</h3>
+          <p>Type <code>20 ft</code> in a field in mm, or <code>6 m + 250</code>, and Enter gives 6096 or 6250. A unit that doesn't fit is a message, not a wrong number. The arrow shows what's typed but not applied yet.</p>
+<pre class="tsl">inspector.NumberRow("Span", value: beam.span, unit: "mm", decimals: 0, min: 0.0)</pre>
+        </div>
+      </article>
+
+      <article class="fcard">
+        <img src="assets/mixed.png" width="878" height="770" loading="lazy" alt="An Inspector for three selected shapes: Layer, Fill, Center X and Radius show Mixed">
+        <div class="body">
+          <h3>Mixed values for a selection</h3>
+          <p>Build the rows from what's selected; where the things differ, the row says Mixed. A value typed or picked there comes back once, for you to give to all of them.</p>
+<pre class="tsl">inspector.number("r", "Radius", first.radius, unit: "m",
+                 group: "Geometry", mixed: !sameRadius)</pre>
+        </div>
+      </article>
+
+      <article class="fcard">
+        <img src="assets/choice.png" width="760" height="320" loading="lazy" alt="A Grade row with its list open: Grade 40, Grade 60 with a check mark, Grade 75">
+        <div class="body">
+          <h3>Choices, switches and colors</h3>
+          <p>A list that opens under the row, a switch, Tessel's color palette, a text field, a value to read and a button: each in the same two columns.</p>
+<pre class="tsl">inspector.ChoiceRow("Grade", selection: beam.grade,
+                    options: ["Grade 40", "Grade 60", "Grade 75"])</pre>
+        </div>
+      </article>
+
+      <article class="fcard">
+        <img src="assets/search.png" width="878" height="330" loading="lazy" alt="An Inspector searched for cent, showing only Center X and Center Y under Geometry">
+        <div class="body">
+          <h3>Sections and search</h3>
+          <p>Groups open and close; a search box shows only the rows whose label (or group) has what's typed, and hides the groups with nothing left.</p>
+<pre class="tsl">inspector.Inspector(properties: props, title: "Selection") { key, value in
+    apply(key, value)
+}</pre>
+        </div>
+      </article>
+
+    </div>
+  </div>
+</section>
+
+<section id="ways">
+  <div class="wrap">
+    <h2>Two ways to make a panel</h2>
+    <p class="intro">They look the same and can sit side by side, as in the picture at the top.</p>
+    <div class="examples">
+      <article class="example">
+        <h3>Rows bound to your values</h3>
+        <p>For a panel that's always the same. Each row edits one value directly; <code>onChange</code> runs after it does.</p>
+<pre class="tsl">import inspector
+
+struct Beam {
+    span: Float = 6000.0
+    depth: Float = 450.0
+    grade: String = "Grade 60"
+    braced: Bool = true
+}
+
+app BeamPanel(width: 380, height: 220) {
+    state beam = Beam()
+
+    inspector.Section("Beam") {
+        inspector.NumberRow("Span", value: beam.span, unit: "mm", decimals: 0, min: 0.0)
+        inspector.NumberRow("Depth", value: beam.depth, unit: "mm", decimals: 0, step: 25.0)
+        inspector.ChoiceRow("Grade", selection: beam.grade, options: ["Grade 40", "Grade 60", "Grade 75"])
+        inspector.ToggleRow("Braced", isOn: beam.braced)
+    }
+}</pre>
+      </article>
+      <article class="example">
+        <h3>An Inspector built from properties</h3>
+        <p>For a panel that changes with what's selected. Every change comes back to one block, with the property's key and its new value.</p>
+<pre class="tsl">inspector.Inspector(properties: [
+    inspector.info("count", "Selected", "{picked.count} shapes", group: "General"),
+    inspector.choice("layer", "Layer", first.layer, layers, group: "General", mixed: !sameLayer),
+    inspector.number("r", "Radius", first.radius, unit: "m", min: 0.0, group: "Geometry", mixed: !sameRadius),
+    inspector.action("delete", "Selection", "Delete", group: "General"),
+]) { key, value in
+    match value {
+        .number(x) -> { for k in selected { if key == "r" { shapes[k].radius = x } } }
+        .text(s) -> { for k in selected { if key == "layer" { shapes[k].layer = s } } }
+        .pressed -> deleteSelected()
+        _ -> {}
+    }
+}</pre>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="numbers">
+  <div class="wrap">
+    <h2>Number fields</h2>
+    <p class="intro">What's typed is applied when Enter is pressed. A plain number is in the field's own unit, also next to one with a unit.</p>
+    <div class="table"><table>
+      <tr><th>Typed</th><th>In a field in</th><th>Gives</th></tr>
+      <tr><td><code>2*3.5 + 1</code></td><td>anything</td><td>8</td></tr>
+      <tr><td><code>3 ft</code></td><td>mm</td><td>914.4</td></tr>
+      <tr><td><code>5'6"</code> or <code>5 ft 6 in</code></td><td>in</td><td>66</td></tr>
+      <tr><td><code>1 m + 50</code></td><td>mm</td><td>1050</td></tr>
+      <tr><td><code>100 psi</code></td><td>kPa</td><td>689.48</td></tr>
+      <tr><td><code>12 kN/m</code></td><td>N/mm</td><td>12</td></tr>
+      <tr><td><code>68 °F</code></td><td>°C</td><td>20</td></tr>
+      <tr><td><code>sqrt(16 m²)</code></td><td>m</td><td>4</td></tr>
+      <tr><td><code>asin(0.5)</code></td><td>deg</td><td>30</td></tr>
+    </table></div>
+    <p class="intro" style="margin-top:16px"><code>min</code> and <code>max</code> keep the value in bounds. Dragging a row's label sideways changes its value, and with a <code>step</code>, − and + buttons do too. Functions: <code>sqrt abs round sin cos tan asin acos atan ln log exp</code> and <code>pi</code>; <code>sin</code>, <code>cos</code> and <code>tan</code> take degrees, as in CAD programs.</p>
+
+    <h3>Units</h3>
+    <div class="table"><table>
+      <tr><th>Kind</th><th>Units</th></tr>
+      <tr><td>Length</td><td><code>m km cm mm µm in ft yd mi nmi</code>, and <code>'</code> <code>"</code> for feet and inches</td></tr>
+      <tr><td>Area, volume</td><td>any length squared or cubed (<code>m²</code>, <code>ft^2</code>, <code>m³</code>), <code>ha acre L mL gal</code></td></tr>
+      <tr><td>Mass</td><td><code>kg g mg t lb oz slug</code></td></tr>
+      <tr><td>Force</td><td><code>N kN MN lbf kip kgf tf</code></td></tr>
+      <tr><td>Pressure, stress</td><td><code>Pa kPa MPa GPa bar atm psi ksi psf ksf mmHg</code></td></tr>
+      <tr><td>Energy, power</td><td><code>J kJ MJ Wh kWh cal kcal BTU W kW MW hp</code></td></tr>
+      <tr><td>Flow, speed</td><td><code>cfs gpm MGD mph knot kph</code>, and combinations like <code>m³/s</code>, <code>L/s</code>, <code>km/h</code></td></tr>
+      <tr><td>Time, angle</td><td><code>s ms min h day</code>, <code>rad deg ° rev</code></td></tr>
+      <tr><td>Temperature</td><td><code>K °C °F</code></td></tr>
+    </table></div>
+    <p class="intro" style="margin-top:16px">Units combine with <code>·</code>, <code>*</code>, <code>/</code> and powers: <code>kN·m</code>, <code>kN/m²</code>, <code>m^3/s</code>. A field's unit that inspector doesn't know (<code>blows/ft</code>) is only shown, and the field takes plain numbers.</p>
+  </div>
+</section>
+
+<section id="tested">
+  <div class="wrap">
+    <h2>Tested without a window</h2>
+    <p class="intro">Tessel runs any app headless, driven by a script of clicks and keys. The library's UI tests type, click, drag and search in the example app that way, and check every row afterwards.</p>
+    <div class="stats">
+      <div class="stat"><b>34</b><span>UI checks: units, bounds, mistakes, choices, colors, search, Mixed</span></div>
+      <div class="stat"><b>100+</b><span>number-field readings checked against values worked out in Python</span></div>
+      <div class="stat"><b>85</b><span>unit names across length, force, stress, flow and more</span></div>
+      <div class="stat"><b>4</b><span>files of Tessel, nothing else to install</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="reference">
+  <div class="wrap">
+    <h2>Reference</h2>
+
+    <h3>Rows bound to your values</h3>
+    <div class="table"><table>
+      <tr><th>Row</th><th>Edits</th></tr>
+      <tr><td><code>NumberRow(label, value:, unit:, decimals:, min:, max:, step:)</code></td><td>A <code>Float</code>.</td></tr>
+      <tr><td><code>IntegerRow(label, value:, unit:, min:, max:, step:)</code></td><td>An <code>Int</code>; what's typed is rounded.</td></tr>
+      <tr><td><code>TextRow(label, text:)</code></td><td>A <code>String</code>, applied with Enter.</td></tr>
+      <tr><td><code>ToggleRow(label, isOn:)</code></td><td>A <code>Bool</code>, with a switch.</td></tr>
+      <tr><td><code>ChoiceRow(label, selection:, options:)</code></td><td>One of <code>options</code>, from a list that opens on a click.</td></tr>
+      <tr><td><code>ColorRow(label, color:)</code></td><td>A <code>Color</code>, from Tessel's palette.</td></tr>
+      <tr><td><code>InfoRow(label, value)</code></td><td>Nothing: shows a value.</td></tr>
+      <tr><td><code>ButtonRow(label, title) { … }</code></td><td>Nothing: a button.</td></tr>
+      <tr><td><code>Section(title, expanded:) { … }</code></td><td>A heading that opens and closes its rows.</td></tr>
+      <tr><td><code>SearchBox(text:)</code></td><td>A search field; give its text to the rows' <code>filter:</code>.</td></tr>
+    </table></div>
+    <p class="intro" style="margin-top:14px">Every row also takes <code>readOnly:</code>, <code>labelWidth:</code>, <code>help:</code> (shown when the mouse rests on the label), <code>filter:</code> and an <code>onChange</code> block.</p>
+
+    <h3>Properties for an Inspector</h3>
+    <div class="table"><table>
+      <tr><th>Property</th><th>Comes back as</th></tr>
+      <tr><td><code>inspector.number(key, label, value, unit:, decimals:, min:, max:, step:)</code></td><td><code>.number(x)</code></td></tr>
+      <tr><td><code>inspector.integer(key, label, value, …)</code></td><td><code>.number(x)</code>, a whole number</td></tr>
+      <tr><td><code>inspector.text(key, label, value)</code></td><td><code>.text(s)</code></td></tr>
+      <tr><td><code>inspector.toggle(key, label, on)</code></td><td><code>.toggle(on)</code></td></tr>
+      <tr><td><code>inspector.choice(key, label, value, options)</code></td><td><code>.text(option)</code></td></tr>
+      <tr><td><code>inspector.color(key, label, color)</code></td><td><code>.color(c)</code></td></tr>
+      <tr><td><code>inspector.info(key, label, value)</code></td><td>(read only)</td></tr>
+      <tr><td><code>inspector.action(key, label, title)</code></td><td><code>.pressed</code></td></tr>
+    </table></div>
+    <p class="intro" style="margin-top:14px">Each also takes <code>group:</code>, <code>readOnly:</code>, <code>mixed:</code> and <code>help:</code>. <code>Inspector(properties:, title:, search:, labelWidth:, emptyText:) { key, value in … }</code> shows them. <code>inspector.evaluate(text, unit:)</code> reads a number as a field does, and <code>inspector.formatNumber(x, decimals:)</code> shows one as the rows do.</p>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>inspector · MIT licence · © 2026 <a href="https://syncster.dev" rel="author">Alexius Academia</a> · <a href="mailto:admin@syncster.dev">admin@syncster.dev</a> · <a href="https://syncster.dev">syncster.dev</a></span>
+    <nav>
+      <a href="https://github.com/alexiusacademia/inspector">GitHub</a>
+      <a href="https://tessel-lang.syncster.dev">Tessel</a>
+      <a href="https://chart-package.syncster.dev">chart</a>
+      <a href="https://csv-package.syncster.dev">csv</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+// Colours the Tessel code: keywords, strings, numbers and comments.
+(function () {
+  const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const keywords = /^(import|fn|var|let|if|else|for|in|while|return|match|try|true|false|nil|app|state|struct)$/;
+  const token = /(\/\/[^\n]*)|("(?:\\.|[^"\\])*")|(\b\d+(?:\.\d+)?(?:e-?\d+)?\b)|([A-Za-z_]\w*)/g;
+  for (const pre of document.querySelectorAll("pre.tsl")) {
+    const text = pre.textContent;
+    let out = "", last = 0, m;
+    token.lastIndex = 0;
+    while ((m = token.exec(text))) {
+      out += esc(text.slice(last, m.index));
+      const t = esc(m[0]);
+      if (m[1]) out += '<span class="c">' + t + "</span>";
+      else if (m[2]) out += '<span class="s">' + t + "</span>";
+      else if (m[3]) out += '<span class="n">' + t + "</span>";
+      else if (keywords.test(m[4])) out += '<span class="k">' + t + "</span>";
+      else out += t;
+      last = token.lastIndex;
+    }
+    pre.innerHTML = out + esc(text.slice(last));
+  }
+  for (const b of document.querySelectorAll("[data-copy]")) {
+    b.addEventListener("click", () => {
+      navigator.clipboard.writeText(b.dataset.copy).then(() => {
+        b.textContent = "Copied";
+        setTimeout(() => { b.textContent = "Copy"; }, 1500);
+      }, () => {});
+    });
+  }
+})();
+</script>
+</body>
+</html>
