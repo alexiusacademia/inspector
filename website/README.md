@@ -5,7 +5,7 @@ The page for the inspector library, live at https://inspector-package.syncster.d
 Author: Alexius Academia · Started 2026-10-25
 
 A static page: no build step, no dependencies. Netlify (project
-`inspector-package`, team syncster.dev)
+`inspector-package`, id `0db390c3-d8c0-4cd9-bf7f-44846a8295c7`, team syncster.dev)
 deploys this folder by itself whenever
 `main` is pushed to GitHub.
 
