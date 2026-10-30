@@ -43,7 +43,8 @@ Typing `20 ft` in Span and pressing Enter makes `beam.span` 6096.
 
 ## Using it
 
-Add it to a project (Tessel 0.10 or later):
+Add it to a project (Tessel 0.10 or later). It brings the
+[units](https://units-package.syncster.dev) library with it.
 
 ```sh
 tessel add inspector
@@ -62,9 +63,12 @@ be:
 | `2*3.5 + 1` | anything | 8 |
 | `3 ft` | mm | 914.4 |
 | `5'6"` or `5 ft 6 in` | in | 66 |
+| `5' 6 1/4"`, `3/8"` | in | 66.25, 0.375 |
 | `1 m + 50` | mm | 1050 (a plain number is in the field's unit) |
 | `100 psi` | kPa | 689.48 |
 | `12 kN/m` | N/mm | 12 |
+| `3 kN/m + 200 lbf/ft` | kN/m | 5.919 |
+| `120 pcf` | kN/m³ | 18.85 |
 | `68 °F` | °C | 20 |
 | `sqrt(16 m²)` | m | 4 |
 | `asin(0.5)` | deg | 30 |
@@ -75,8 +79,8 @@ be:
   angle with its unit (`sin(0.5 rad)`).
 - A unit belongs to the number just before it: `pi/2 rad` is
   `pi / (2 rad)`, so write `(pi/2) rad`.
-- Something wrong is shown under the field in red, like `this field takes
-  a length (mm), not a mass`, and the value doesn't change.
+- Something wrong is shown under the field in red, like `mm is a length,
+  not a mass`, and the value doesn't change.
 - Until Enter is pressed, an arrow beside the field shows that what's
   typed isn't applied yet. Clicking it goes back to the value. (Tessel 0.10
   tells a library only about Enter, not about each key or a click
@@ -90,25 +94,26 @@ be:
 
 ### Units
 
-| Kind | Units |
-|---|---|
-| Length | `m km cm mm um µm in ft yd mi nmi`, and `'` `"` for feet and inches |
-| Area, volume | any length squared or cubed (`m²`, `ft^2`, `mm2`, `m³`), `ha acre L l mL gal` |
-| Mass | `kg g mg t tonne lb oz slug` |
-| Time | `s ms min h hr day` |
-| Force | `N kN MN lbf kip kgf tf` |
-| Pressure, stress | `Pa kPa MPa GPa bar mbar atm psi ksi psf ksf mmHg` |
-| Energy, power | `J kJ MJ Wh kWh cal kcal BTU`, `W kW MW hp` |
-| Flow, speed | `cfs gpm MGD`, `mph knot kph`, and any combination like `m³/s`, `L/s`, `km/h` |
-| Angle | `rad deg ° rev` |
-| Temperature | `K °C degC C °F degF F` |
-| Other | `Hz % ppm` |
+Number fields are read by the [units](https://units-package.syncster.dev)
+library, so they know every unit, prefix and dimension
+[pint](https://pint.readthedocs.io) knows, plus engineering units like
+`psf ksf pcf kcf plf klf cfs gpm MGD MCM inH2O ac_ft`, and `'` and `"` for
+feet and inches. Units combine with `·`, `*`, `/` and powers: `kN·m`,
+`kN/m²`, `m^3/s`, `W/(m·K)`.
 
-Units combine with `·`, `*`, `/` and powers: `kN·m`, `kN/m²`, `m^3/s`.
-A field's `unit` can be any of these. A unit inspector doesn't know
+A field's `unit` can be any unit units reads. A unit it doesn't know
 (`"blows/ft"`) is only shown, and the field takes plain numbers. A
-temperature in °C or °F is converted on its own, but can't be added to
-or multiplied.
+temperature in °C or °F is converted on its own, but can't be added to or
+multiplied.
+
+**Changed in 0.2.0**, as units follows pint's names:
+
+- `C` and `F` are the coulomb and the farad: write `°C` or `degC`, and
+  `°F` or `degF`.
+- `rev` is gone: write `turn` or `revolution`.
+- `acre` is the US survey acre (4046.873 m², 4 ppm more than before).
+- An angle is a dimension: `rpm` converts to `rad/s` or `deg/s`, not `Hz`.
+- Messages read like `mm is a length, not a mass`.
 
 ## Rows bound to your values
 
@@ -199,7 +204,7 @@ appearance:
 ## Tests
 
 ```sh
-tessel run tests     # what number fields read, against values worked out in Python
+tessel run tests     # what number fields read, against values worked out in Python and pint
 sh tests/ui.sh       # the example app driven without a window: 34 checks
 ```
 
@@ -214,8 +219,7 @@ the Inspector's mixed values.
 |---|---|
 | `rows.tsl` | The rows, `Section`, `SearchBox`, and the views that draw each kind of row. |
 | `inspector.tsl` | `Inspector`, `Property`, `Kind`, `Value`, and `number`, `choice` and the other property makers. |
-| `expr.tsl` | `evaluate` and `formatNumber`: what's typed in a number field. |
-| `units.tsl` | The units and their dimensions. |
+| `numbers.tsl` | `evaluate` and `formatNumber`: what's typed in a number field, read by units. |
 | `examples/main.tsl` | The app in the pictures. |
 | `tests/` | The tests. |
 

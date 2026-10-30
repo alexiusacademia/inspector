@@ -1,0 +1,43 @@
+// inspector: what's typed in a number field, read by the units library
+// (https://units-package.syncster.dev). It can be a number, a sum
+// ("2*3.5 + 1"), or numbers with units ("3 ft", "12 kN/m", "5' 6 1/4\""),
+// which are converted to the field's unit. A plain number is in the field's
+// own unit, also when it's added to one with a unit ("1 m + 50" in a field
+// in mm is 1050). A field in a unit units doesn't know ("blows/ft") takes
+// plain numbers only.
+//
+// Author: Alexius Academia
+// Date: 2026-10-30
+
+import units
+
+// evaluate(text, unit:)
+//   What's typed in a number field, as a number in `unit`: a number, a sum
+//   like "2*3.5 + 1", or numbers with units ("3 ft", "12 kN/m", "5'6\"",
+//   "68 °F") converted to `unit`. A plain number is in `unit`. Functions:
+//   sqrt abs round sin cos tan (of degrees, or an angle with a unit) asin
+//   acos atan ln log exp, and pi. A failure says what's wrong.
+//
+//   print(inspector.evaluate("3 ft + 2 in", unit: "mm").value() ?? 0.0)   // 965.2
+public fn evaluate(_ text: String, unit: String = "") -> Result<Float> {
+    if unit.trim().isEmpty || units.isUnit(unit) {
+        return units.read(text, unit: unit)
+    }
+    // A unit units doesn't know is only shown: plain numbers only.
+    match units.read(text, unit: "") {
+        .ok(x) -> Result.ok(value: x)
+        .failure(e) -> {
+            if units.readQuantity(text).isOk() {
+                return Result.failure(error: Error("type a plain number: inspector doesn't know the unit \"{unit.trim()}\""))
+            }
+            Result.failure(error: e)
+        }
+    }
+}
+
+// formatNumber(x, decimals:)
+//   x with at most `decimals` decimals and no zeros at the end: 2.5, 300,
+//   0.125.
+public fn formatNumber(_ x: Float, decimals: Int = 4) -> String {
+    units.formatNumber(x, decimals: decimals)
+}

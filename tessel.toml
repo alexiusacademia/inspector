@@ -7,6 +7,9 @@ tessel = "0.10.0"
 # `tessel add inspector`, then `import inspector`.
 [library]
 name = "inspector"
-version = "0.1.0"
+version = "0.2.0"
 description = "Property panels: number rows with units and math, choices, colors, toggles, sections and search"
 license = "MIT"
+
+[dependencies]
+units = "0.1"

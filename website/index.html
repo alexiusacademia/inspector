@@ -81,10 +81,10 @@
     <div class="features2">
 
       <article class="fcard">
-        <img src="assets/units.png" width="760" height="400" loading="lazy" alt="A Span field with 20 ft typed in it and an orange arrow showing it isn't applied yet, and a Depth field with 3 kg and a red message: this field takes a length (mm), not a mass">
+        <img src="assets/units.png" width="760" height="400" loading="lazy" alt="A Span field with 20 ft typed in it and an orange arrow showing it isn't applied yet, and a Depth field with 3 kg and a red message: mm is a length, not a mass">
         <div class="body">
           <h3>Sums and units in number fields</h3>
-          <p>Type <code>20 ft</code> in a field in mm, or <code>6 m + 250</code>, and Enter gives 6096 or 6250. A unit that doesn't fit is a message, not a wrong number. The arrow shows what's typed but not applied yet.</p>
+          <p>Type <code>20 ft</code> in a field in mm, or <code>6 m + 250</code>, and Enter gives 6096 or 6250. A unit that doesn't fit is a message, not a wrong number. The arrow shows what's typed but not applied yet. Fields are read by the <a href="https://units-package.syncster.dev">units</a> library.</p>
 <pre class="tsl">inspector.NumberRow("Span", value: beam.span, unit: "mm", decimals: 0, min: 0.0)</pre>
         </div>
       </article>
@@ -182,9 +182,12 @@ app BeamPanel(width: 380, height: 220) {
       <tr><td><code>2*3.5 + 1</code></td><td>anything</td><td>8</td></tr>
       <tr><td><code>3 ft</code></td><td>mm</td><td>914.4</td></tr>
       <tr><td><code>5'6"</code> or <code>5 ft 6 in</code></td><td>in</td><td>66</td></tr>
+      <tr><td><code>5' 6 1/4"</code>, <code>3/8"</code></td><td>in</td><td>66.25, 0.375</td></tr>
       <tr><td><code>1 m + 50</code></td><td>mm</td><td>1050</td></tr>
       <tr><td><code>100 psi</code></td><td>kPa</td><td>689.48</td></tr>
       <tr><td><code>12 kN/m</code></td><td>N/mm</td><td>12</td></tr>
+      <tr><td><code>3 kN/m + 200 lbf/ft</code></td><td>kN/m</td><td>5.919</td></tr>
+      <tr><td><code>120 pcf</code></td><td>kN/m³</td><td>18.85</td></tr>
       <tr><td><code>68 °F</code></td><td>°C</td><td>20</td></tr>
       <tr><td><code>sqrt(16 m²)</code></td><td>m</td><td>4</td></tr>
       <tr><td><code>asin(0.5)</code></td><td>deg</td><td>30</td></tr>
@@ -192,19 +195,8 @@ app BeamPanel(width: 380, height: 220) {
     <p class="intro" style="margin-top:16px"><code>min</code> and <code>max</code> keep the value in bounds. Dragging a row's label sideways changes its value, and with a <code>step</code>, − and + buttons do too. Functions: <code>sqrt abs round sin cos tan asin acos atan ln log exp</code> and <code>pi</code>; <code>sin</code>, <code>cos</code> and <code>tan</code> take degrees, as in CAD programs.</p>
 
     <h3>Units</h3>
-    <div class="table"><table>
-      <tr><th>Kind</th><th>Units</th></tr>
-      <tr><td>Length</td><td><code>m km cm mm µm in ft yd mi nmi</code>, and <code>'</code> <code>"</code> for feet and inches</td></tr>
-      <tr><td>Area, volume</td><td>any length squared or cubed (<code>m²</code>, <code>ft^2</code>, <code>m³</code>), <code>ha acre L mL gal</code></td></tr>
-      <tr><td>Mass</td><td><code>kg g mg t lb oz slug</code></td></tr>
-      <tr><td>Force</td><td><code>N kN MN lbf kip kgf tf</code></td></tr>
-      <tr><td>Pressure, stress</td><td><code>Pa kPa MPa GPa bar atm psi ksi psf ksf mmHg</code></td></tr>
-      <tr><td>Energy, power</td><td><code>J kJ MJ Wh kWh cal kcal BTU W kW MW hp</code></td></tr>
-      <tr><td>Flow, speed</td><td><code>cfs gpm MGD mph knot kph</code>, and combinations like <code>m³/s</code>, <code>L/s</code>, <code>km/h</code></td></tr>
-      <tr><td>Time, angle</td><td><code>s ms min h day</code>, <code>rad deg ° rev</code></td></tr>
-      <tr><td>Temperature</td><td><code>K °C °F</code></td></tr>
-    </table></div>
-    <p class="intro" style="margin-top:16px">Units combine with <code>·</code>, <code>*</code>, <code>/</code> and powers: <code>kN·m</code>, <code>kN/m²</code>, <code>m^3/s</code>. A field's unit that inspector doesn't know (<code>blows/ft</code>) is only shown, and the field takes plain numbers.</p>
+    <p class="intro">Number fields are read by the <a href="https://units-package.syncster.dev">units</a> library: every unit, prefix and dimension <a href="https://pint.readthedocs.io">pint</a> knows, plus engineering units like <code>psf ksf pcf kcf plf klf cfs gpm MGD MCM inH2O ac_ft</code>, and <code>'</code> and <code>"</code> for feet and inches. Units combine with <code>·</code>, <code>*</code>, <code>/</code> and powers: <code>kN·m</code>, <code>kN/m²</code>, <code>m^3/s</code>, <code>W/(m·K)</code>. A field's unit that units doesn't know (<code>blows/ft</code>) is only shown, and the field takes plain numbers.</p>
+    <p class="intro" style="margin-top:12px"><b>Changed in 0.2.0</b>, as units follows pint's names: <code>C</code> and <code>F</code> are the coulomb and the farad (write <code>°C</code>, <code>degC</code>, <code>°F</code>, <code>degF</code>); <code>rev</code> is now <code>turn</code>; <code>acre</code> is the US survey acre; <code>rpm</code> converts to <code>rad/s</code>, not <code>Hz</code>.</p>
   </div>
 </section>
 
@@ -214,9 +206,9 @@ app BeamPanel(width: 380, height: 220) {
     <p class="intro">Tessel runs any app headless, driven by a script of clicks and keys. The library's UI tests type, click, drag and search in the example app that way, and check every row afterwards.</p>
     <div class="stats">
       <div class="stat"><b>34</b><span>UI checks: units, bounds, mistakes, choices, colors, search, Mixed</span></div>
-      <div class="stat"><b>100+</b><span>number-field readings checked against values worked out in Python</span></div>
-      <div class="stat"><b>85</b><span>unit names across length, force, stress, flow and more</span></div>
-      <div class="stat"><b>4</b><span>files of Tessel, nothing else to install</span></div>
+      <div class="stat"><b>100+</b><span>number-field readings checked against values worked out in Python and pint</span></div>
+      <div class="stat"><b>440</b><span>units from pint and engineering, with any prefix, through the units library</span></div>
+      <div class="stat"><b>3</b><span>files of Tessel, and the units library</span></div>
     </div>
   </div>
 </section>

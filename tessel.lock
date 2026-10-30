@@ -1,0 +1,13 @@
+# The exact versions of the libraries this project uses, worked out by
+# Tessel from tessel.toml. Commit it, so every build uses the same ones.
+
+format = 1
+
+[[package]]
+name = "units"
+version = "0.1.1"
+source = "index"
+repository = "https://github.com/alexiusacademia/units"
+tag = "v0.1.1"
+commit = "346965c342f75d97bc5663ef837ca6b538a88587"
+checksum = "sha256:ffa330d227503f30ad650ee491cd1bcb9d4b32b90755926fcb9bb7ca70714444"
